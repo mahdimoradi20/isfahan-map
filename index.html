@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>اصفهان قدیم و امروز</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+html,body,#map,#history{position:absolute;inset:0;margin:0}
+#map{direction:ltr}
+#history{z-index:450;overflow:hidden;pointer-events:none}
+#history img{position:absolute;left:0;top:0;width:850px;height:1035px;max-width:none;transform-origin:0 0}
+body{font:16px Tahoma,sans-serif;background:#e8e4d9}
+header,.compare{position:absolute;z-index:600;background:#fffdf6;color:#173e3e;border-radius:12px;padding:12px 16px;box-shadow:0 2px 14px #0003}
+header{top:12px;right:12px} h1{font-size:18px;margin:0 0 6px} small{display:block}
+#map-status{margin:8px 0 0;max-width:240px;font-size:13px}
+.compare{bottom:34px;left:50%;transform:translateX(-50%);width:min(440px,80vw)}
+.compare label{display:flex;align-items:center;gap:10px;font-size:13px}
+.compare input{flex:1;min-width:0;accent-color:#146765}
+.compare button{margin-top:8px;background:#e4f1ed;color:#173e3e;border:0;border-radius:6px;padding:7px 10px;cursor:pointer}
+#line{position:absolute;top:0;bottom:0;width:3px;background:white;box-shadow:0 0 6px #0009;z-index:500;pointer-events:none}
+#handle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:46px;height:46px;display:grid;place-items:center;border:2px solid white;border-radius:50%;background:#146765;color:white;font:22px sans-serif;box-shadow:0 2px 8px #0006;pointer-events:auto;cursor:ew-resize;touch-action:none;user-select:none}
+.era{position:absolute;top:78px;z-index:500;padding:6px 10px;border-radius:6px;background:#173e3e;color:white;font-size:13px;pointer-events:none}
+#old-label{left:14px} #new-label{right:14px}
+</style>
+<div id="map" aria-label="نقشهٔ اصفهان"></div>
+<div id="history"><img src="historical.jpg" alt="نقشهٔ تاریخی اصفهان"></div>
+<div id="line"><div id="handle" role="slider" tabindex="0" aria-label="مرز مقایسهٔ نقشهٔ قدیم و امروز" aria-valuemin="4" aria-valuemax="96" aria-valuenow="50">↔</div></div>
+<span id="old-label" class="era">اصفهان قدیم</span>
+<span id="new-label" class="era">اصفهان امروز</span>
+<header><h1>اصفهان قدیم و امروز</h1><small>هم‌ترازی اولیه بر پایهٔ سه نقطه</small><p id="map-status" role="status" hidden></p></header>
+<div class="compare">
+  <label>شفافیت نقشهٔ قدیمی <input id="opacity" type="range" min="0" max="100" value="100"></label>
+  <button id="reset" type="button">بازگشت به نمای اولیه</button>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const initialCenter = [32.6495, 51.6735];
+const initialZoom = 14;
+const map = L.map('map', {zoomAnimation: false, zoomControl: false}).setView(initialCenter, initialZoom);
+L.control.zoom({position: 'topleft'}).addTo(map);
+const mapStatus = document.querySelector('#map-status');
+if (location.protocol === 'file:') {
+  mapStatus.textContent = 'برای دیدن نقشهٔ امروزی، فایل start-map.cmd را اجرا کنید.';
+  mapStatus.hidden = false;
+} else {
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).on('tileerror', () => {
+    mapStatus.textContent = 'بخشی از نقشهٔ امروزی بارگذاری نشد.';
+    mapStatus.hidden = false;
+  }).on('loading', () => {
+    mapStatus.hidden = true;
+  }).addTo(map);
+}
+
+// Image coordinates refer to the 850 × 1035 display raster.
+const anchors = [
+  {pixel: [384, 830], location: [32.64458, 51.66747]}, // Si-o-se-pol
+  {pixel: [592, 924], location: [32.63683, 51.68331]}, // Khaju Bridge
+  {pixel: [496, 568], location: [32.65722, 51.68028]} // Naqsh-e Jahan
+];
+const historyLayer = document.querySelector('#history');
+const historicalImage = historyLayer.querySelector('img');
+const line = document.querySelector('#line');
+const handle = document.querySelector('#handle');
+const opacity = document.querySelector('#opacity');
+let split = 50;
+
+function positionImage() {
+  const [[x0, y0], [x1, y1], [x2, y2]] = anchors.map(anchor => anchor.pixel);
+  const [origin, first, second] = anchors.map(anchor => map.latLngToContainerPoint(anchor.location));
+  const u = first.subtract(origin);
+  const v = second.subtract(origin);
+  const dx1 = x1 - x0, dy1 = y1 - y0, dx2 = x2 - x0, dy2 = y2 - y0;
+  const determinant = dx1 * dy2 - dx2 * dy1;
+  const a = (u.x * dy2 - v.x * dy1) / determinant;
+  const b = (u.y * dy2 - v.y * dy1) / determinant;
+  const c = (v.x * dx1 - u.x * dx2) / determinant;
+  const d = (v.y * dx1 - u.y * dx2) / determinant;
+  const e = origin.x - a * x0 - c * y0;
+  const f = origin.y - b * x0 - d * y0;
+  historicalImage.style.transform = `matrix(${a},${b},${c},${d},${e},${f})`;
+}
+
+function updateSplit(value) {
+  split = Math.max(4, Math.min(96, Math.round(value)));
+  historyLayer.style.clipPath = `inset(0 ${100 - split}% 0 0)`;
+  line.style.left = `${split}%`;
+  handle.setAttribute('aria-valuenow', split);
+}
+
+map.on('move zoom resize', positionImage);
+handle.addEventListener('pointerdown', event => {
+  handle.setPointerCapture(event.pointerId);
+});
+handle.addEventListener('pointermove', event => {
+  if (handle.hasPointerCapture(event.pointerId)) {
+    updateSplit(event.clientX / document.documentElement.clientWidth * 100);
+  }
+});
+handle.addEventListener('keydown', event => {
+  const values = {ArrowLeft: split - 2, ArrowRight: split + 2, Home: 4, End: 96};
+  if (!Object.hasOwn(values, event.key)) return;
+  event.preventDefault();
+  updateSplit(values[event.key]);
+});
+opacity.addEventListener('input', () => {
+  historicalImage.style.opacity = opacity.value / 100;
+});
+document.querySelector('#reset').addEventListener('click', () => {
+  map.setView(initialCenter, initialZoom);
+  opacity.value = 100;
+  historicalImage.style.opacity = 1;
+  updateSplit(50);
+});
+positionImage();
+updateSplit(50);
+</script>
+</html>
